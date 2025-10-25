@@ -10,3 +10,4 @@ python-dotenv>=1.0
 matplotlib>=3.8
 requests>=2.31
 azure-storage-blob>=12.19
+gunicorn
