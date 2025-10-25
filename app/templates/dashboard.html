@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bank Marketing Classifier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "ui-sans-serif", "system-ui", "Segoe UI", "sans-serif"],
+          },
+          colors: {
+            brand: {
+              50: "#EEF9FF",
+              100: "#C8ECFF",
+              200: "#8CD7FF",
+              400: "#2EA5FF",
+              500: "#0077E6",
+              600: "#005EB7",
+              900: "#0B1B2B",
+            },
+          },
+          boxShadow: {
+            glow: "0 40px 120px -30px rgba(0,119,230,0.45)",
+          },
+        },
+      },
+    };
+  </script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const form = document.querySelector("#prediction-form");
+      const submitBtn = document.querySelector("#submit-btn");
+      const statusBadge = document.querySelector("#status-badge");
+      const resultCard = document.querySelector("#result-card");
+      const resultText = document.querySelector("#result-text");
+      const probabilityText = document.querySelector("#probability-text");
+      const errorBox = document.querySelector("#error-box");
+      const sampleBtn = document.querySelector("#sample-btn");
+
+      const numericFields = ["age", "balance", "day", "duration", "campaign", "pdays", "previous"];
+
+      const sample = {
+        age: 42,
+        job: "admin.",
+        marital: "married",
+        education: "university.degree",
+        default: "no",
+        balance: 1345,
+        housing: "yes",
+        loan: "no",
+        contact: "cellular",
+        day: 16,
+        month: "aug",
+        duration: 210,
+        campaign: 1,
+        pdays: 999,
+        previous: 0,
+        poutcome: "unknown",
+      };
+
+      sampleBtn.addEventListener("click", () => {
+        Object.entries(sample).forEach(([key, value]) => {
+          const input = form.elements.namedItem(key);
+          if (input) {
+            input.value = value;
+          }
+        });
+      });
+
+      const setSubmittingState = (isSubmitting) => {
+        if (isSubmitting) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = `
+            <svg class="h-5 w-5 animate-spin text-white" viewBox="0 0 24 24">
+              <circle class="opacity-30" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            Running prediction...
+          `;
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Predict Subscription";
+        }
+      };
+
+      const showError = (message) => {
+        errorBox.textContent = message;
+        errorBox.classList.remove("hidden");
+        statusBadge.textContent = "Error";
+        statusBadge.className = "inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-700 shadow-sm ring-1 ring-red-200/70";
+        resultCard.classList.add("hidden");
+      };
+
+      const showResult = (probability, label) => {
+        errorBox.classList.add("hidden");
+        resultCard.classList.remove("hidden");
+        probabilityText.textContent = `${(probability * 100).toFixed(1)}% chance`;
+
+        if (label === 1) {
+          resultText.textContent = "Likely to subscribe";
+          resultCard.className = "rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-xl ring-1 ring-emerald-200/60 transition";
+          statusBadge.textContent = "Positive prediction";
+          statusBadge.className = "inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700 shadow-sm ring-1 ring-emerald-200/70";
+        } else {
+          resultText.textContent = "Unlikely to subscribe";
+          resultCard.className = "rounded-2xl border border-slate-200 bg-white p-6 shadow-xl ring-1 ring-slate-100 transition";
+          statusBadge.textContent = "Negative prediction";
+          statusBadge.className = "inline-flex items-center gap-2 rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200/70";
+        }
+      };
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const formData = new FormData(form);
+        const payload = Object.fromEntries(formData.entries());
+        numericFields.forEach((field) => {
+          payload[field] = Number(payload[field]);
+        });
+
+        try {
+          setSubmittingState(true);
+          statusBadge.textContent = "Scoring...";
+          statusBadge.className = "inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-700 shadow-sm ring-1 ring-blue-200/70";
+
+          const response = await fetch("/predict", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({}));
+            throw new Error(errorBody.detail ?? "Prediction failed.");
+          }
+
+          const result = await response.json();
+          showResult(result.probability, result.prediction);
+        } catch (error) {
+          showError(error.message ?? "Unexpected error occurred.");
+        } finally {
+          setSubmittingState(false);
+        }
+      });
+    });
+  </script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 font-sans text-slate-900 antialiased">
+  <div class="relative overflow-hidden">
+    <div class="pointer-events-none absolute -left-24 top-[-10rem] h-[28rem] w-[28rem] rounded-full bg-brand-100/40 blur-3xl"></div>
+    <div class="pointer-events-none absolute bottom-[-12rem] right-[-8rem] h-[30rem] w-[30rem] rounded-full bg-sky-200/40 blur-3xl"></div>
+
+    <header class="relative mx-auto flex w-full max-w-7xl flex-col gap-12 px-6 pt-14 lg:flex-row lg:items-center lg:gap-16">
+      <div class="flex-1 space-y-6">
+        <span id="status-badge" class="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700 shadow-sm ring-1 ring-sky-200/70">
+          Ready to score
+        </span>
+        <h1 class="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
+          Bank Marketing Propensity Classifier
+        </h1>
+        <p class="max-w-2xl text-lg text-slate-600">
+          Capture the latest customer interaction and discover how likely they are to subscribe to a term deposit. The model blends engineered campaign features with MLflow-tracked experiments.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+          <div class="flex items-start gap-3 rounded-2xl bg-white/90 p-4 shadow shadow-slate-200 ring-1 ring-slate-100 backdrop-blur">
+            <svg class="mt-0.5 h-5 w-5 text-brand-500" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.22-9.78a.75.75 0 00-1.06-1.06L9 10.91 7.84 9.75a.75.75 0 10-1.06 1.06l1.75 1.75a.75.75 0 001.06 0l3.63-3.34z" clip-rule="evenodd" />
+            </svg>
+            <div>
+              <p class="font-semibold text-slate-800">Guided inputs</p>
+              <p>Each field includes plain-language hints and suggested ranges.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 rounded-2xl bg-white/90 p-4 shadow shadow-slate-200 ring-1 ring-slate-100 backdrop-blur">
+            <svg class="mt-0.5 h-5 w-5 text-brand-500" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M2 4.25A2.25 2.25 0 014.25 2h5.5a.75.75 0 010 1.5h-5.5a.75.75 0 00-.75.75v11a.75.75 0 00.75.75h5.5a.75.75 0 010 1.5h-5.5A2.25 2.25 0 012 15.75v-11zm16 2.5a.75.75 0 00-1.5 0v2.5h-5a.75.75 0 000 1.5h5v2.5a.75.75 0 001.5 0v-6.5z" clip-rule="evenodd" />
+            </svg>
+            <div>
+              <p class="font-semibold text-slate-800">Instant scoring</p>
+              <p>Serverless FastAPI endpoint responds in under a few hundred milliseconds.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative flex-1">
+        <div class="pointer-events-none absolute -right-8 top-12 h-40 w-40 rounded-full bg-brand-100/50 blur-3xl"></div>
+        <div class="pointer-events-none absolute bottom-10 left-0 h-32 w-32 rounded-full bg-purple-200/40 blur-3xl"></div>
+        <img
+          src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iNjQwIiB2aWV3Qm94PSIwIDAgNjQwIDY0MCIgZmlsbD0ibm9uZSI+CiAgPGRlZnM+CiAgICA8cmFkaWFsR3JhZGllbnQgaWQ9ImdyYWQxIiBjeD0iNTAlIiBjeT0iNDAlIiByPSI3MCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjNUFEOEZGIiBzdG9wLW9wYWNpdHk9IjAuOTUiIC8+CiAgICAgIDxzdG9wIG9mZnNldD0iNjAlIiBzdG9wLWNvbG9yPSIjMzM2Q0ZGIiBzdG9wLW9wYWNpdHk9IjAuNiIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMEIxQjJCIiBzdG9wLW9wYWNpdHk9IjAiIC8+CiAgICA8L3JhZGlhbEdyYWRpZW50PgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJncmFkMiIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiM4RUY2RkYiIHN0b3Atb3BhY2l0eT0iMC45IiAvPgogICAgICA8c3RvcCBvZmZzZXQ9IjUwJSIgc3RvcC1jb2xvcj0iIzVDOEJGRiIgc3RvcC1vcGFjaXR5PSIwLjc1IiAvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMyQzFBNjQiIHN0b3Atb3BhY2l0eT0iMC45NSIgLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImdyYWQzIiB4MT0iMjAlIiB5MT0iMCUiIHgyPSI4MCUiIHkyPSIxMDAlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI0ZGRkZGRiIgc3RvcC1vcGFjaXR5PSIwLjg1IiAvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNDNkZGREQiIHN0b3Atb3BhY2l0eT0iMC4yIiAvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+CiAgPHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjY0MCIgaGVpZ2h0PSI2NDAiIHJ4PSI0OCIgZmlsbD0iIzA3MTExRiIgLz4KICA8Y2lyY2xlIGN4PSIyMjAiIGN5PSIyMTAiIHI9IjE5MCIgZmlsbD0idXJsKCNncmFkMSkiIC8+CiAgPHBhdGggZD0iTTE0MCA0MjBDMTgwIDM2MCAyNTAgMzQwIDMyMCAzNjBDMzkwIDM4MCA0NTAgNDQwIDUwMCA1MjAiIHN0cm9rZT0idXJsKCNncmFkMikiIHN0cm9rZS13aWR0aD0iMTgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgZmlsbD0ibm9uZSIgb3BhY2l0eT0iMC45IiAvPgogIDxwYXRoIGQ9Ik0xMjAgNTAwQzE2MCA0NzAgMjMwIDQ3MCAyODAgNTAwQzMzMCA1MzAgNDAwIDU0MCA0NjAgNTIwIiBzdHJva2U9IiM4RUY2RkYiIHN0cm9rZS13aWR0aD0iMTAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgb3BhY2l0eT0iMC43IiAvPgogIDxnIG9wYWNpdHk9IjAuODUiPgogICAgPHBhdGggZD0iTTIwMCAyNTBDMjAwIDIwMCAyNDAgMTYwIDI5MCAxNjBDMzQwIDE2MCAzODAgMjAwIDM4MCAyNTBDMzgwIDMwMCAzNDAgMzQwIDI5MCAzNDBDMjQwIDM0MCAyMDAgMzAwIDIwMCAyNTBaIiBmaWxsPSJ1cmwoI2dyYWQzKSIgLz4KICAgIDxwYXRoIGQ9Ik0yNTAgMjMwQzI1MCAyMTAgMjY1IDE5NSAyODUgMTk1QzMwNSAxOTUgMzIwIDIxMCAzMjAgMjMwQzMyMCAyNTAgMzA1IDI2NSAyODUgMjY1QzI2NSAyNjUgMjUwIDI1MCAyNTAgMjMwWiIgZmlsbD0iIzFGM0E1RiIgLz4KICAgIDxwYXRoIGQ9Ik0yMjUgMzAwQzI0MCAyODAgMjY1IDI3MCAyOTAgMjc1QzMxNSAyODAgMzMwIDMwMCAzNDAgMzIwIiBzdHJva2U9IiM0QUIzRkYiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAvPgogIDwvZz4KICA8ZyBvcGFjaXR5PSIwLjMiPgogICAgPGNpcmNsZSBjeD0iNDcwIiBjeT0iMTgwIiByPSI0MCIgZmlsbD0iIzc5RkZFMSIgLz4KICAgIDxjaXJjbGUgY3g9IjUyMCIgY3k9IjE0MCIgcj0iMTgiIGZpbGw9IiNGMUJGRkYiIC8+CiAgICA8Y2lyY2xlIGN4PSI1NjAiIGN5PSIyMTAiIHI9IjEyIiBmaWxsPSIjRkZFRTk5IiAvPgogIDwvZz4KICA8ZyBvcGFjaXR5PSIwLjQiPgogICAgPHJlY3QgeD0iNDIwIiB5PSIzNjAiIHdpZHRoPSIxMjAiIGhlaWdodD0iMTIwIiByeD0iMjQiIGZpbGw9IiMxMzI5NEIiIC8+CiAgICA8cGF0aCBkPSJNNDUwIDQyMEw0ODAgMzgwTDUyMCA0MjAiIHN0cm9rZT0iIzhFRjZGRiIgc3Ryb2tlLXdpZHRoPSIxMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiAvPgogICAgPGxpbmUgeDE9IjQ1MCIgeTE9IjQ0MCIgeDI9IjUyMCIgeTI9IjQ0MCIgc3Ryb2tlPSIjNUM4QkZGIiBzdHJva2Utd2lkdGg9IjgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgLz4KICAgIDxsaW5lIHgxPSI0NTAiIHkxPSI0NjUiIHgyPSI1MDUiIHkyPSI0NjUiIHN0cm9rZT0iIzVDOEJGRiIgc3Ryb2tlLXdpZHRoPSI4IiBzdHJva2UtbGluZWNhcD0icm91bmQiIC8+CiAgPC9nPgogIDx0ZXh0IHg9IjYwIiB5PSI1ODAiIGZpbGw9IiM4RUY2RkYiIGZvbnQtZmFtaWx5PSInU2Vnb2UgVUknLCAnSGVsdmV0aWNhIE5ldWUnLCBBcmlhbCIgZm9udC1zaXplPSI0OCIgZm9udC13ZWlnaHQ9IjYwMCI+QUkgSm91cm5leTwvdGV4dD4KICA8dGV4dCB4PSI2MiIgeT0iNjIwIiBmaWxsPSIjNUM4QkZGIiBmb250LWZhbWlseT0iJ1NlZ29lIFVJJywgJ0hlbHZldGljYSBOZXVlJywgQXJpYWwiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI0MDAiIG9wYWNpdHk9IjAuNzUiPkN1c3RvbWVyIHByb3BlbnNpdHkgaW50ZWxsaWdlbmNlPC90ZXh0Pgo8L3N2Zz4="
+          alt="AI-generated illustration representing the customer propensity journey"
+          class="relative z-10 mx-auto w-full max-w-xl rounded-3xl border border-white/60 bg-white/40 shadow-glow" />
+        <p class="mt-4 text-center text-sm text-slate-500">Illustration generated by the LLM to visualise AI-assisted marketing journeys.</p>
+      </div>
+    </header>
+
+    <main class="relative mx-auto grid w-full max-w-7xl gap-10 px-6 pb-16 lg:grid-cols-5 lg:gap-12">
+      <section class="lg:col-span-3">
+        <form id="prediction-form" class="space-y-6 rounded-3xl border border-slate-200 bg-white/90 px-6 py-8 shadow-2xl shadow-slate-300/30 backdrop-blur">
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 class="text-xl font-semibold text-slate-900">Customer interaction details</h2>
+            <button id="sample-btn" type="button" class="inline-flex items-center gap-2 rounded-full border border-brand-400/80 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-600 transition hover:border-brand-500 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500">
+              Use sample data
+            </button>
+          </div>
+
+          <div class="grid gap-6 sm:grid-cols-2">
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Age</span>
+                <span class="text-xs text-slate-500">Customer age in full years (18–95 typical).</span>
+              </div>
+              <input type="number" name="age" required min="18" max="99" inputmode="numeric" placeholder="e.g. 42" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Balance (€)</span>
+                <span class="text-xs text-slate-500">Average yearly account balance in euros (can be negative).</span>
+              </div>
+              <input type="number" name="balance" required step="0.01" inputmode="decimal" placeholder="e.g. 1345" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Job</span>
+                <span class="text-xs text-slate-500">Primary occupation category.</span>
+              </div>
+              <input type="text" name="job" list="job-options" required placeholder="admin., technician, management..." class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+              <datalist id="job-options">
+                <option value="admin.">
+                <option value="blue-collar">
+                <option value="technician">
+                <option value="services">
+                <option value="management">
+                <option value="retired">
+                <option value="self-employed">
+                <option value="student">
+                <option value="unemployed">
+                <option value="entrepreneur">
+              </datalist>
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Marital Status</span>
+                <span class="text-xs text-slate-500">Relationship status of the client.</span>
+              </div>
+              <input type="text" name="marital" list="marital-options" required placeholder="married, single, divorced" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+              <datalist id="marital-options">
+                <option value="married">
+                <option value="single">
+                <option value="divorced">
+              </datalist>
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Education</span>
+                <span class="text-xs text-slate-500">Highest completed schooling level.</span>
+              </div>
+              <input type="text" name="education" list="education-options" required placeholder="secondary, university.degree..." class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+              <datalist id="education-options">
+                <option value="primary">
+                <option value="secondary">
+                <option value="tertiary">
+                <option value="university.degree">
+                <option value="professional.course">
+                <option value="illiterate">
+              </datalist>
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Has Credit in Default?</span>
+                <span class="text-xs text-slate-500">Did the client ever default on existing credit? Choose yes/no.</span>
+              </div>
+              <select name="default" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+                <option value="">Select...</option>
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Housing Loan</span>
+                <span class="text-xs text-slate-500">Does the client currently have a housing loan?</span>
+              </div>
+              <select name="housing" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+                <option value="">Select...</option>
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Personal Loan</span>
+                <span class="text-xs text-slate-500">Does the client currently have a personal loan?</span>
+              </div>
+              <select name="loan" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+                <option value="">Select...</option>
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Contact Type</span>
+                <span class="text-xs text-slate-500">Communication channel used for the last touchpoint.</span>
+              </div>
+              <input type="text" name="contact" list="contact-options" required placeholder="cellular / telephone" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+              <datalist id="contact-options">
+                <option value="cellular">
+                <option value="telephone">
+              </datalist>
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Last Contact Month</span>
+                <span class="text-xs text-slate-500">Three-letter month abbreviation of the last call.</span>
+              </div>
+              <input type="text" name="month" list="month-options" required placeholder="jan, feb, mar..." class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+              <datalist id="month-options">
+                <option value="jan">
+                <option value="feb">
+                <option value="mar">
+                <option value="apr">
+                <option value="may">
+                <option value="jun">
+                <option value="jul">
+                <option value="aug">
+                <option value="sep">
+                <option value="oct">
+                <option value="nov">
+                <option value="dec">
+              </datalist>
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Last Contact Day</span>
+                <span class="text-xs text-slate-500">Day of month for last call (1–31).</span>
+              </div>
+              <input type="number" name="day" required min="1" max="31" inputmode="numeric" placeholder="e.g. 16" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Call Duration (seconds)</span>
+                <span class="text-xs text-slate-500">Length of the last contact in seconds (0–5,000 typical).</span>
+              </div>
+              <input type="number" name="duration" required min="0" max="5000" inputmode="numeric" placeholder="e.g. 210" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Campaign Contacts</span>
+                <span class="text-xs text-slate-500">Total contacts performed during this campaign (0–20 typical).</span>
+              </div>
+              <input type="number" name="campaign" required min="0" max="50" inputmode="numeric" placeholder="e.g. 1" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Days Since Previous Contact</span>
+                <span class="text-xs text-slate-500">Days after the client was last contacted in a past campaign (999 means never).</span>
+              </div>
+              <input type="number" name="pdays" required min="0" max="999" inputmode="numeric" placeholder="e.g. 999" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Previous Contacts (campaign)</span>
+                <span class="text-xs text-slate-500">Number of contacts made before this campaign (0–10 typical).</span>
+              </div>
+              <input type="number" name="previous" required min="0" max="20" inputmode="numeric" placeholder="e.g. 0" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+            </label>
+            <label class="flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-800">Previous Outcome</span>
+                <span class="text-xs text-slate-500">Result of the previous marketing campaign.</span>
+              </div>
+              <input type="text" name="poutcome" list="poutcome-options" required placeholder="success, failure, nonexistent..." class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-slate-900 shadow-inner transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+              <datalist id="poutcome-options">
+                <option value="success">
+                <option value="failure">
+                <option value="nonexistent">
+                <option value="unknown">
+              </datalist>
+            </label>
+          </div>
+
+          <div class="space-y-3">
+            <div id="error-box" class="hidden rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+            <button id="submit-btn" type="submit" class="inline-flex w-full items-center justify-center gap-3 rounded-xl bg-brand-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-brand-500/30 transition hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:bg-brand-500/60">
+              Predict Subscription
+            </button>
+            <p class="text-xs text-slate-500">
+              Predictions are made in real time against the hosted FastAPI endpoint. Only the values you submit are sent; no information is stored in the browser.
+            </p>
+          </div>
+        </form>
+      </section>
+
+      <aside class="flex flex-col gap-6 lg:col-span-2">
+        <div id="result-card" class="hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-xl ring-1 ring-slate-100 transition">
+          <h3 class="text-lg font-semibold text-slate-900">Prediction insight</h3>
+          <p id="result-text" class="mt-2 text-xl font-bold text-slate-900"></p>
+          <p id="probability-text" class="mt-2 text-sm text-slate-600"></p>
+          <dl class="mt-6 space-y-3 text-sm text-slate-600">
+            <div class="flex justify-between gap-4">
+              <dt class="font-medium text-slate-700">Model</dt>
+              <dd class="font-semibold text-slate-900">Logistic Regression (tuned)</dd>
+            </div>
+            <div class="flex justify-between gap-4">
+              <dt class="font-medium text-slate-700">Tracking</dt>
+              <dd class="font-semibold text-slate-900">MLflow experiment: bank_marketing_classification</dd>
+            </div>
+            <div class="flex justify-between gap-4">
+              <dt class="font-medium text-slate-700">Training data</dt>
+              <dd class="font-semibold text-slate-900">UCI Bank Marketing (~45k rows)</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="rounded-3xl border border-slate-200 bg-white/95 p-6 text-sm text-slate-600 shadow-xl shadow-slate-200/50 ring-1 ring-slate-100">
+          <h3 class="text-base font-semibold text-slate-900">How to interpret the score</h3>
+          <ul class="mt-3 space-y-3 leading-relaxed">
+            <li><span class="font-semibold text-slate-900">Probability</span> reflects the model’s confidence in a positive outcome. Threshold set to 0.5 by default.</li>
+            <li><span class="font-semibold text-slate-900">Positive prediction</span> spotlights high-propensity leads—consider immediate follow-up or strategic offers.</li>
+            <li><span class="font-semibold text-slate-900">Negative prediction</span> signals a low likelihood; explore alternative products or nurture campaigns.</li>
+          </ul>
+          <p class="mt-4 text-xs text-slate-500">
+            This dashboard is for demonstration purposes. Validate compliance, consent, and data retention policies before production deployment.
+          </p>
+        </div>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>
